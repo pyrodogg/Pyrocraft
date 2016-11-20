@@ -1,0 +1,618 @@
+local moves = 0
+local curX, curY, curZ, curF = 0, 0, 0, 0
+dir = {["south"] = 0,["west"] = 1,["north"] = 2,["east"] =3}
+local revdir = {[0] = "south", [1] = "west", [2] = "north", [3] = "east"}
+
+-- North = -Z
+-- South = +Z
+-- West  = -X
+-- East  = +X
+
+local old = {
+  forward   = turtle.forward,
+  back      = turtle.back,
+  up        = turtle.up,
+  down      = turtle.down,
+  turnLeft  = turtle.turnLeft,
+  turnRight = turtle.turnRight}
+local private = {}
+
+function getDirections()
+  return dir
+end
+
+function initPos(...)
+  local args = {...}
+  
+  print("Aquiring GPS Signal...")
+  gpsX, gpsY, gpsZ = gps.locate(2)
+  term.clear()
+  term.setCursorPos(1,1)
+
+  curX = gpsX or 0
+  curY = gpsY or 0
+  curZ = gpsZ or 0
+
+  if gpsX then 
+    --GPS Signal Found, use it
+    savePos()
+  else
+    --GPS signal not found
+    if #args ~= 0 then
+      curX = tonumber(args[1]) or 0
+      curY = tonumber(args[2]) or 0
+      curZ = tonumber(args[3]) or 0
+      curF = tonumber(args[4]) or 0
+      savePos()
+    else
+      --Unknown Position attempt restoring last known position
+      restorePos()
+    end
+  end
+end
+
+function savePos()
+--[[
+  local pos = {x=curX,y=curY,z=curZ,f=curF}
+  local filePath = "lastpos"
+  local fp = fs.open(filePath,'w')
+  fp.write(serial.serialize(pos))
+  fp.close()
+]]--
+end
+
+function restorePos()
+  --[[
+local pos
+  local filePath = "lastpos"
+  local fp
+  if fs.exists(filePath) then
+  
+    local success, err = pcall(function() 
+      fp = fs.open(filePath,'r')
+      pos = serial.unserialize(fp.readAll())
+      fp.close()
+      return true
+    end)
+    if not success then fp.close(); print(err) end
+    curX = tonumber(pos.x)
+    curY = tonumber(pos.y)
+    curZ = tonumber(pos.z)
+    curF = tonumber(pos.f)
+  end
+]]--
+end
+
+function getPos()
+  return vector.new(curX,curY,curZ,curF)
+end
+
+function printPos(pos)
+  local x,y,z,f
+  pos = pos or {nil,nil,nil,nil}
+  x = pos.x or pos[1] or curX
+  y = pos.y or pos[2] or curY
+  z = pos.z or pos[3] or curZ
+  f = pos.f or pos[4] or curF
+  
+  print("X: "..x..", Y: "..y..", Z: "..z..", f: "..f)
+end
+
+-- Wait until next dig attempt so that we don't block event loop
+function digWait(t)
+  t = t or 0.2
+  local timer = os.startTimer(t)
+  while true do
+    local e, p1 = os.pullEvent("timer")
+    if p1 == timer then
+      break
+    end  
+  end
+end
+
+function updatePos(dx,dy,dz)
+  curX = curX + dx
+  curY = curY + dy
+  curZ = curZ + dz
+  savePos()
+end
+
+function checkFuel(d)
+  d = d or 100
+  if turtle.getFuelLevel() < d then
+    print ("Fuel is lower than " .. d .. "; Refuel.")
+    return false
+  else
+    return true
+  end
+end
+
+function forward()
+  for i=1,10 do
+    if old.forward() then
+      --update position
+      if curF == dir["south"] then
+        updatePos(0,0,1)
+      elseif curF == dir["north"] then
+        updatePos(0,0,-1)
+      elseif curF == dir["west"] then
+        updatePos(-1,0,0)
+      elseif curF == dir["east"] then
+        updatePos(1,0,0)
+      end
+      return true
+    else
+      digWait()
+    end    
+  end
+  return false
+end
+
+function digForward(s)
+  local intSpacesToMove = s or 1
+  local intSpacesMoved = 0
+  --print("Dig forward " .. intSpacesToMove .. " spaces.")
+  for i = 1, intSpacesToMove do
+    local blnMoveSuccess = false
+    for j = 0, 10 do 
+      if turtle.detect() then
+        turtle.dig()
+      else
+          if forward() then 
+            blnMoveSuccess = true
+            intSpacesMoved = intSpacesMoved + 1
+            break
+          end
+      end
+    end -- for j
+    if blnMoveSuccess == false then 
+      print("DigForward: Too many attempts")
+      break 
+    end
+  end -- for i
+  if intSpacesToMove == intSpacesMoved then
+    return true, intSpacesMoved
+  else
+    return false, intSpacesMoved
+  end
+end -- digForward()
+
+function back()
+  for i=1,10 do
+    if old.back() then
+      if curF == dir["south"] then
+        updatePos(0,0,-1)
+      elseif curF == dir["north"] then
+        updatePos(0,0,1)
+      elseif curF == dir["west"] then
+        updatePos(1,0,0)
+      elseif curF == dir["east"] then
+        updatePos(-1,0,0)
+      end
+      return true
+    else
+      digWait()
+    end
+  end
+  return false
+end
+
+function up()
+  for i=1,10 do
+    if old.up() then
+      updatePos(0,1,0)
+      return true
+    else
+      digWait()
+    end
+  end
+  return false
+end
+
+function down()
+  for i=1,10 do
+    if old.down() then
+      updatePos(0,-1,0)
+      return true
+    else
+      digWait()
+    end
+  end
+  return false
+end
+
+function turnLeft()
+  curF = (curF + 3)%4
+  savePos()
+  old.turnLeft(t)
+  return true
+end
+
+function turnRight()
+  curF = (curF + 1)%4
+  savePos()
+  old.turnRight()
+  return true
+end
+
+function strafeLeft(n)
+  n = n or 1
+  local success = turnLeft()
+  if not success then return false end
+  for i=1,n do
+    success = forward()
+    if not success then
+      return false
+    end
+  end
+  return turnRight()
+end
+
+function strafeRight(n)
+  n = n or 1
+  local success = turnRight()
+  if not success then return false end
+  for i=1,n do
+    success = forward()
+    if not success then
+      return false
+    end
+  end
+  return turnLeft()
+end
+
+function getFacing()
+  return revdir[curF]
+end
+
+function turn(d)
+  if dir[d] == (curF+3)%4 then
+    turnLeft()
+    return true
+  elseif dir[d] == (curF+1)%4 then
+    turnRight()
+    return true
+  elseif dir[d] == (curF+2)%4 then
+    turnRight()
+    turnRight()
+    return true
+  else
+    return false
+  end
+end
+
+function reverseMove(dir)
+  local moveMirror = {turnRight="turnLeft",
+                      turnLeft="turnRight",
+                      up="down",
+                      down="up",
+                      forward="back",
+                      back="forward"}
+  return moveMirror[dir]
+
+end
+
+
+local split = function(str,pattern)
+  pattern = pattern or "[^%s]+"
+  if pattern:len() == 0 then pattern = "[^%s]+" end
+  local parts = {__index = table.insert}
+  setmetatable(parts,parts)
+  str:gsub(pattern, parts)
+  setmetatable(parts,nil)
+  parts.__index = nil
+  return parts
+end
+
+function go(s)
+  local tArgs
+  if type(s) == "string" then
+    tArgs = split(s,"")
+  else
+    tArgs = s
+  end
+  
+  local nArgs = 1
+  while nArgs <= #tArgs do
+    local sDirection = tArgs[nArgs]
+    local nDistance = 1
+    if nArgs < #tArgs then
+      local num = tonumber(tArgs[nArgs + 1])
+      if num then
+        nDistance = num
+        nArgs = nArgs + 1
+      end
+    end
+    nArgs = nArgs + 1
+        
+    if _G["t"][sDirection] then
+      while nDistance > 0 do
+        if _G["t"][sDirection]() then
+          nDistance = nDistance - 1
+        elseif turtle.getFuelLevel() == 0 then
+          print("Out of fuel")
+          return false
+        else
+          digWait()
+        end
+      end
+    else
+      print("No such direction: "..sDirection)
+      return false
+    end
+  end
+end
+
+function goToX(x)
+  if curX == x then
+    return true
+  elseif curX < x then
+    turn("east")
+  else
+    turn("west")
+  end
+  while curX ~= x do
+    if not forward() then
+      --can't move forward
+      return false
+    else
+    end
+  end
+  return true
+end
+-- North = -Z
+-- South = +Z
+-- West  = -X
+-- East  = +X
+
+function goToZ(z)
+  if curZ == z then
+    return true
+  elseif curZ < z then
+    turn("south")
+  else
+    turn("north")
+  end
+  while curZ ~= z do
+    if not forward() then
+      --can't move forward
+      return false
+    end
+  end
+  return true
+end
+
+function goToY(y)
+  if curY == y then 
+    return true
+  end
+  
+  while curY ~= y do
+    if curY < y then
+      turtle.up()
+    else
+      turtle.down()
+    end
+  end
+  return true
+end
+
+function moveTo(x, y, z, f)
+  return navigate({{x = x, y = y, z = z, f = f}})
+end
+getfenv()["goto"] = moveto
+
+function navigate(path)
+  local absPath = {}
+  for k, v in ipairs(path) do
+    if type(v) == "string" then
+      --It's a waypoint. Add the coordinate to the list.
+      local x, y, z, f = waypoint.get(v)
+      table.insert(absPath,{x=x,y=y,z=z,f=f})
+    elseif type(v) == "table" then
+      --It's a coordinate. Do 
+      local x,y,z,f = v.x, v.y, v.z, v.f
+      table.insert(absPath, {x=x, y=y, z=z, f=f})
+    else
+      error("Invalid path entry at index " .. k)
+    end
+  end
+  
+  -- If we have no steps at all we can stop right here.
+  if #absPath == 0 then 
+    return true
+  end
+  
+  -- Strip facings for all except the last entry
+  for i = 1, #absPath - 1 do
+    absPath[i].f = nil
+  end
+  
+  --weirdness
+  -- state.path = {
+    -- steps = absPath,
+    -- tries = tries or 0,
+    -- aggressive = agressive or false
+  -- }
+  -- return private.navigate()
+end
+
+waypoint = {}
+local waypoints = persist:new("vars/waypoints")
+
+function waypoint.add(name, x, y, z, f)
+  --private.resume()
+  
+  local pos = getPos()
+  if x == nil and y == nil  and z == nil and f == nil then
+    f = pos[4]
+  end
+  
+  x = x or pos[1]
+  y = y or pos[2]
+  z = z or pos[3]
+  
+  local overriden = waypoint.exists(name)
+  waypoints[name] = {
+    x = math.floor(x),
+    y = math.floor(y),
+    z = math.floor(z),
+    f = f
+  }
+  
+  return overriden
+end
+
+function waypoint.remove(name)
+  --private.resume()
+  if not waypoint.exists(name) then
+    return false
+  end
+  waypoints:delete(name)
+  return true
+end
+
+function waypoint.get(name)
+  --private.resume()
+  assert(waypoint.exists(name),
+      "no such waypoint, '"..tostring(name).."'")
+  local w = state.waypoints[name]
+  return w.x,w.y,w.z,w.f
+end
+
+function waypoint.iter()
+  --private.resume()
+  local name
+  return function()
+    local coordinate
+    name, coordinate = next(waypoints,name)
+    if name then
+      return name, coordinate.x, coordinate.y, coordinate.z, coordinate.f
+    end
+  end
+end
+
+function waypoint.moveto(name)
+  x, y, z, f = waypoint.get(name)
+  return moveto(x, y, z, f)
+end
+
+waypoint["goto"] = waypoint.moveto
+
+function private.navigate()
+  local function travel(axis, distance)
+    -- If we make no moves along this axis we can skip the rest
+    if distance == 0 then
+      return true
+    end
+    
+    -- Turn to face the axis if necessary, in a way that we can move
+    -- forwards (we don't want to move backwards because we cannot dig or
+    -- attack when moving backwards). This is unnecessary for the z axis,
+    -- because facing doesn't matter there.
+    local directions = ({
+        x = {"north","south"},
+        y = {"east", "west"}})[axis]
+    if directions then
+      local direction = distance > 0 and directions[1] or directions[2]
+      turn(direction)
+    end
+        
+    -- Move in the appropriate direction as often as necessary.
+    local action = ({
+      x = forward,
+      y = distance > 0 and up or down,
+      z = forward > 0 and up or down})[axis]
+    distance = math.abs(distance)
+    while distance > 0 do
+      local result, reason = action()
+      if not result then
+        return result, reason
+      end
+      distance = distance -1
+    end
+    
+    --All green.
+    return true
+  end
+  
+  -- Process all remaining waypoints
+  local result, reason
+  repeat
+    -- Figure out how far we have to move along each axis.
+    local x, y, z = getPos()
+    --local step = path.steps[1]
+    --local dx, dy, dz = ste
+    
+    -- Then move that distance along each axis.
+    for acis, distaance in pairs({x = dx, y = dy, z = dz}) do
+      result, reason = travel(axis, distance)
+      if not result then
+        break
+      end
+    end
+    
+    if result and step.f ~= nil then
+      step.f = (step.f + 2) % 4
+      result = turn(step.f)
+      if not result then
+        reason = reason.queue_full
+      end
+    end
+    
+    -- Done, we reached this waypoint so we can remove it from the list.
+    table.remove(state.path.steps,1)
+    --private.save("path")
+  until not result or #state.path.steps == 0
+  
+  -- Clear the state so we don't try to continue moving next startup.
+  private.endNavigate()
+  
+  -- Unwrap the startup to restore the previous startup file, if any.
+  private.unwrapStartup()
+  
+  -- And we're done.
+  return result, reason
+  
+end
+
+function private.endNavigate()
+  state.path = nil
+  fs.delete(stateFile.patH)
+end
+
+fd = forward
+bk = back
+dn = down
+lt = turnLeft
+rt = turnRight
+face = turn
+sl = strafeLeft
+sr = strafeRight
+f = forward
+b = back
+d = down
+u = u
+north = function() return turn("north") end
+south = function() return turn("south") end
+east = function() return turn("east") end
+west = function() return turn("west") end
+
+function printMoves()
+  print("Moves: " .. moves)
+end
+
+--Reset Defaults
+
+turtle.forward = forward
+turtle.back = back
+turtle.up = up
+turtle.down = down
+turtle.turnLeft = turnLeft
+turtle.turnRight = turnRight
+
+assert(turtle, "Can only run on turtles.")
+
+assert(turtle.getFuelLevel() ~= "unlimited",
+    "Turtles must use fuel for this API to work correctly.")
+
