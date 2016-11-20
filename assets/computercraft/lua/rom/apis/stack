@@ -1,0 +1,55 @@
+
+local Stack = {}
+
+
+function Stack:new()
+  local t = {}
+  t._et = {}
+
+
+  setmetatable(t,self)
+  self.__index = self
+  return t
+end
+
+
+function Stack:push(...)
+
+  if ... then
+    local tArgs = {...}
+    for _, v in ipairs(tArgs) do
+      table.insert(self._et, v)
+    end
+  end
+end
+
+function Stack:pop(num)
+  local num = num or 1
+
+  local entries = {}
+
+  for i = 1, num do
+    if #self._et ~= 0 then
+      table.insert(entries, self._et[#self._et])
+      table.remove(self._et)
+    else
+      break
+    end
+  end
+  return unpack(entries)
+end
+
+function Stack:getn()
+  return #self._et
+end
+
+function Stack:list()
+  for i, v in pairs(self._et) do
+    print(i, v)
+  end
+  return t
+end
+
+function new()
+  return Stack:new()
+end
