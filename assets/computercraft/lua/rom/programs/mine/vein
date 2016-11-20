@@ -1,0 +1,147 @@
+local tArgs = {...}
+
+local map = {} -- Index format x:y:z
+local blockState = {match=1,clear=0,unmatch=-1}
+local maxDistance = 10 --Radius from start defining maximum search area
+local stackMoves = stack:new()
+local checkBlock = {} -- Block to check
+
+--Mine out a contiguous vein of ores
+function main()
+  local success = false
+  --setBlockState(t.getPos(),blockState.match)
+  --print(getBlockState(t.getPos()))
+
+  --setBlockState(1,2,3,blockState.unmatch)
+  --print(getBlockState(1,2,3))
+
+  --Find All Matches, Mine and track untraversed nodes
+    
+  --For Each match, move to position, recurse
+  --TODO: Implement t.reverseDirection()
+
+  success, checkBlock = turtle.inspect()
+
+  if not success then error("Need block to be mined in front of turtle") end 
+
+  print("Mining: " .. checkBlock.name .. "  meta: " .. checkBlock.metadata)
+
+  --if turtle.getItemCount(1) == 0 then error("Need Compare Item in Slot 1") end
+  --turtle.select(1)
+  scanNode()
+end
+
+function inspectCompare(dir)
+  local success, inspect = false, {}
+  if dir =="up" then
+    success, inspect = turtle.inspectUp()
+  elseif dir == "down" then
+    success, inspect = turtle.inspectDown()
+  else
+    success, inspect = turtle.inspect()
+  end
+
+  if (success and checkBlock.name == inspect.name and checkBlock.metadata == inspect.metadata) then
+    return true
+  else 
+    return false
+  end
+end
+
+function scanNode()
+  local matches = {}
+  if inspectCompare("up") then 
+    matches.up = true 
+    turtle.digUp()
+  end
+  if inspectCompare("down") then 
+    matches.down = true 
+    turtle.digDown()
+  end
+
+  for i=0,3 do
+    if inspectCompare("") then
+      matches[i] = true
+      turtle.dig()
+    end
+    turtle.turnRight()
+  end
+
+  for i,v in pairs(matches) do
+    if i == "up" then
+      turtle.up()
+      stackMoves:push("up")
+      scanNode()  
+    elseif i == "down" then
+      turtle.down()
+      stackMoves:push("down")
+      scanNode()  
+    else
+      if i > 0 then
+        for j=1,i do
+          turtle.turnRight()
+          --stackMoves:push("turnRight")
+        end
+      end
+      turtle.forward()
+      stackMoves:push("forward")
+      scanNode()
+      if i > 0 then
+        for j=1,i do
+          turtle.turnLeft()
+        end
+      end
+    end
+     
+  end
+
+  lastMove = stackMoves:pop()
+  if lastMove ~= nil then
+    reverseMove = t.reverseMove(lastMove)
+    _G["t"][reverseMove]()
+  end
+  return
+end
+
+function setBlockState(...)
+  local x = arg[1] or 0
+  local y = arg[2] or 0
+  local z = arg[3] or 0
+  local state = arg[4] or nil
+
+  if #arg == 2 and vector.isVector(arg[1]) then
+    local v = arg[1]
+    
+    x,y,z = v.x, v.y, v.z
+    state = arg[2]
+  elseif #arg ~= 4 then
+    error("Must specify Vector or x,y,z")
+  end
+
+  if blockState[state] == nil then
+    error("Invalid blockState: "..state)
+  end
+
+  map[x..":"..y..":"..z]  = state
+end
+
+
+function getBlockState(...)
+  if #arg == 1 then
+    local v = arg[1]
+    return map[v.x..":"..v.y..":"..v.z]
+  else
+    return map[arg[1]..":"..arg[2]..":"..arg[3]]
+  end
+end
+
+function init()
+  --Create reverse blockState lookup
+  for i,v in pairs(blockState) do
+    blockState[v] =  i
+  end
+end
+
+
+init()
+main()
